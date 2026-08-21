@@ -41,11 +41,20 @@ VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".ts")
 
 
 class FrameReader:
-    """Lazy per-video cv2.VideoCapture with frame seeking (1-based ids)."""
+    """Per-video frame source.
 
-    def __init__(self, video_dir):
+    Decodes each video *sequentially* once and (when ``cache=True``) keeps the
+    decoded frames in memory at ``resize`` resolution. Random access — needed by
+    shuffled training and temporal sampling — then becomes a cheap array index
+    instead of a slow random-seek into compressed H.264.
+    """
+
+    def __init__(self, video_dir, cache: bool = True, resize=None):
         self.video_dir = Path(video_dir)
-        self._caps: Dict[str, cv2.VideoCapture] = {}
+        self.cache = cache
+        self.resize = resize  # (w, h); decoded frames are resized to this size
+        self._frames: Dict[str, np.ndarray] = {}          # video_name -> (N, H, W, 3) uint8 BGR
+        self._caps: Dict[str, cv2.VideoCapture] = {}      # used only when cache=False
 
     def find_video(self, video_name: str) -> Optional[Path]:
         for ext in VIDEO_EXTENSIONS:
@@ -54,7 +63,42 @@ class FrameReader:
                 return p
         return None
 
+    def _decode_all(self, video_name: str) -> np.ndarray:
+        """Sequentially decode the whole video once into a (N, H, W, 3) array."""
+        path = self.find_video(video_name)
+        if path is None:
+            raise FileNotFoundError(f"video not found for '{video_name}' in {self.video_dir}")
+        cap = cv2.VideoCapture(str(path))
+        if not cap.isOpened():
+            raise IOError(f"cannot open video {path}")
+        frames = []
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if self.resize is not None:
+                frame = cv2.resize(frame, self.resize)
+            frames.append(frame)
+        cap.release()
+        if not frames:
+            raise RuntimeError(f"no frames decoded from {path}")
+        arr = np.stack(frames, axis=0)  # (N, H, W, 3) uint8 BGR
+        logger.info(f"FrameReader: decoded {len(arr)} frames from {video_name} "
+                    f"({arr.shape[2]}x{arr.shape[1]})")
+        return arr
+
     def read(self, video_name: str, frame_id: int) -> np.ndarray:
+        if self.cache:
+            if video_name not in self._frames:
+                self._frames[video_name] = self._decode_all(video_name)
+            arr = self._frames[video_name]
+            idx = int(frame_id) - 1  # 1-based frame id -> 0-based index
+            if idx < 0 or idx >= len(arr):
+                raise RuntimeError(
+                    f"frame {frame_id} out of range for {video_name} ({len(arr)} frames)")
+            return arr[idx]  # BGR (H, W, 3)
+
+        # Non-cache fallback: single VideoCapture with seeking (slow for shuffled access).
         cap = self._caps.get(video_name)
         if cap is None:
             path = self.find_video(video_name)
@@ -68,12 +112,13 @@ class FrameReader:
         ret, frame = cap.read()
         if not ret:
             raise RuntimeError(f"failed to read frame {frame_id} of {video_name}")
-        return frame  # BGR (H, W, 3)
+        return frame
 
     def close(self):
         for cap in self._caps.values():
             cap.release()
         self._caps.clear()
+        self._frames.clear()
 
 
 class BEVDataset(Dataset):
@@ -122,7 +167,7 @@ class BEVDataset(Dataset):
         self.temporal = temporal
         self.normalize = normalize
 
-        self.reader = FrameReader(video_dir)
+        self.reader = FrameReader(video_dir, cache=True, resize=(self.input_w, self.input_h))
         self.label_reader = LabelReader(img_w, img_h)
         self._label_cache: Dict[str, Dict[int, list]] = {}
 
@@ -160,9 +205,8 @@ class BEVDataset(Dataset):
         return len(self.samples)
 
     def _load_frame_rgb(self, video_name: str, frame_id: int) -> torch.Tensor:
-        frame = self.reader.read(video_name, frame_id)          # BGR
+        frame = self.reader.read(video_name, frame_id)          # BGR, already at input size
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb = cv2.resize(rgb, (self.input_w, self.input_h))
         img = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
         if self.normalize:
             mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
