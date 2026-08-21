@@ -9,6 +9,8 @@ Config-driven construction helpers shared by the train/eval/inference scripts.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -27,9 +29,37 @@ from data.bev_dataset import build_bev_datasets, bev_collate_fn
 from torch.utils.data import DataLoader
 
 
+_ENV_PAT = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}")
+
+
+def _expand_env_string(s: str) -> str:
+    """Expand ``${VAR}`` / ``${VAR:-default}`` in a string from os.environ."""
+
+    def _repl(m):
+        name, default = m.group(1), m.group(2)
+        val = os.environ.get(name)
+        if val:
+            return val
+        return default if default is not None else ""
+
+    return _ENV_PAT.sub(_repl, s)
+
+
+def _expand_env(value):
+    """Recursively expand ``${VAR}`` patterns in a parsed YAML object."""
+    if isinstance(value, str):
+        return _expand_env_string(value)
+    if isinstance(value, dict):
+        return {k: _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
 def load_config(path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    return _expand_env(config)
 
 
 def build_geometry(config):

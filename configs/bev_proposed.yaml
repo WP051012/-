@@ -73,10 +73,10 @@ loss:
 # 数据配置（复用已有检测+追踪输出，不重新检测）
 # ------------------------------------------------------------
 data:
-  raw_video_dir: "D:/Red-Light视频数据/"
+  raw_video_dir: "${BEV_VIDEO_DIR:-D:/Red-Light视频数据/}"
   bev:
-    video_dir: "D:/Red-Light视频数据/"
-    label_dir: "D:/Red-Light视频数据/labels/"
+    video_dir: "${BEV_VIDEO_DIR:-D:/Red-Light视频数据/}"
+    label_dir: "${BEV_LABEL_DIR:-D:/Red-Light视频数据/labels/}"
     img_h: 2160                # 原始分辨率（单应矩阵标定基准）
     img_w: 3840
     input_h: 480               # 网络输入（不影响单应矩阵/伪标签）

@@ -53,10 +53,10 @@ loss:
   temporal_weight: null
 
 data:
-  raw_video_dir: "D:/Red-Light视频数据/"
+  raw_video_dir: "${BEV_VIDEO_DIR:-D:/Red-Light视频数据/}"
   bev:
-    video_dir: "D:/Red-Light视频数据/"
-    label_dir: "D:/Red-Light视频数据/labels/"
+    video_dir: "${BEV_VIDEO_DIR:-D:/Red-Light视频数据/}"
+    label_dir: "${BEV_LABEL_DIR:-D:/Red-Light视频数据/labels/}"
     img_h: 2160
     img_w: 3840
     input_h: 480

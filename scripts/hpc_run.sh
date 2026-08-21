@@ -16,6 +16,11 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ENV_NAME}"
 
 export CUDA_VISIBLE_DEVICES="${GPU}"
+
+# 注入数据路径环境变量（config 里 ${BEV_VIDEO_DIR}/${BEV_LABEL_DIR} 引用）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/hpc_env.sh"
+
 SESSION="bev_train"
 
 # 避免重名会话
@@ -32,5 +37,5 @@ echo "  进入会话:      tmux attach -t ${SESSION}     (退出按 Ctrl-b 再�
 echo "  看显存:        nvidia-smi"
 echo "  结束训练:      tmux kill-session -t ${SESSION}"
 echo ""
-echo "⚠️  首次运行前，确认 ${CONFIG} 里的 data.bev.video_dir / label_dir"
-echo "    已改成 HPC 上的实际路径（不要再指向 D:/Red-Light视频数据/）。"
+echo "⚠️  数据路径由 scripts/hpc_env.sh 注入；首次运行前确认该文件里的"
+echo "    BEV_VIDEO_DIR / BEV_LABEL_DIR 指向正确目录（默认 $HOME/red-light-prediction/data_bev/）。"
