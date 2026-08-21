@@ -4,6 +4,7 @@ STEP 3 test — detection → bottom-center → homography → pseudo-BEV.
 Run:  py tests/test_pseudo_bev.py
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from src.bev.pseudo_bev import (
     BEV_CLASSES,
 )
 
-LABEL_DIR = Path("D:/Red-Light视频数据/labels")
+LABEL_DIR = Path(os.environ.get("BEV_LABEL_DIR", "D:/Red-Light视频数据/labels"))
 VIS_DIR = Path("visualization")
 VIS_DIR.mkdir(exist_ok=True)
 
