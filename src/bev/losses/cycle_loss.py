@@ -35,5 +35,9 @@ def camera_bev_cycle_loss(M_cam, M_cam_rec, dice_weight: float = 1.0):
     M_cam : (B, C, mask_h, mask_w) pseudo camera mask.
     M_cam_rec : (B, C, mask_h, mask_w) pred_bev warped back to camera.
     """
+    # BCE on [0,1] probs is unsafe under AMP fp16 autocast — cast to fp32 so
+    # it runs in full precision (dice is also more stable there).
+    M_cam = M_cam.float()
+    M_cam_rec = M_cam_rec.float()
     bce = F.binary_cross_entropy(M_cam_rec, M_cam)
     return bce + dice_weight * dice_loss(M_cam_rec, M_cam)
