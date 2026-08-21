@@ -1,0 +1,256 @@
+# ============================================================
+# 闯红灯预测 - 默认配置文件
+# 交通感知增强的行人轨迹预测与闯红灯行为分类
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. 目标检测配置
+# ------------------------------------------------------------
+detection:
+  model_name: "yolov8n.pt"          # YOLO模型: yolov8n/s/m/l/x, yolo11n/s/m/l/x
+  fine_tuned_model: null             # 微调后的模型路径 (null则使用预训练权重)
+  device: "cuda"                     # cuda / cpu
+  img_size: 640                      # 输入图像尺寸
+  conf_threshold: 0.35               # 检测置信度阈值
+  iou_threshold: 0.45                # NMS IoU阈值
+
+  # 类别映射: COCO类别ID -> 交通场景类别
+  # COCO: 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck, 9=traffic_light
+  class_mapping:
+    pedestrian:     [0]              # COCO person
+    bicycle:        [1]              # COCO bicycle
+    motorcycle:     [3]              # COCO motorcycle
+    car:            [2]              # COCO car
+    bus:            [5]              # COCO bus
+    truck:          [7]              # COCO truck
+    traffic_light:  [9]              # COCO traffic light
+
+  # 交通场景下的超类别归并
+  super_categories:
+    vehicle:  [bicycle, motorcycle, car, bus, truck]
+    person:   [pedestrian]
+    infrastructure: [traffic_light]
+
+# ------------------------------------------------------------
+# 2. 多目标追踪配置
+# ------------------------------------------------------------
+tracking:
+  tracker_type: "bytetrack"          # bytetrack / botsort / strongsort
+  track_buffer: 30                   # 丢失后保留帧数
+  track_thresh: 0.5                  # 追踪匹配阈值
+  match_thresh: 0.8                  # 匹配IoU阈值
+  min_hits: 3                        # 最少命中次数才确认轨迹
+  max_age: 30                        # 最大存活帧数
+
+  # 轨迹保存参数
+  min_trajectory_length: 15          # 最短有效轨迹长度(帧数)
+
+# ------------------------------------------------------------
+# 2.5 视频与路口配置
+# ------------------------------------------------------------
+video:
+  width: 3840                        # 视频宽度 (4K)
+  height: 2160                       # 视频高度
+  fps: 25                            # 帧率
+  pix_per_meter: 47.5                # 像素/米 换算比例 (待标定)
+
+# 路口几何标注 (像素坐标, 需根据实际视频标注)
+# 两个路口: A = timing_模式 (1/15, 1/21), B = 编号模式 (1/22-1/27)
+intersection_A:
+  name: "路口A"
+  date_pattern: "timing"
+  stop_line: [1260, 750, 1927, 775]
+  junction_roi: [962, 792, 1930, 2077]
+  # 斑马线四边形区域（从停止线延伸至路口内部，覆盖完整过街路径）
+  crosswalk_roi:
+    - [1260, 750]
+    - [1927, 775]
+    - [1927, 1200]
+    - [1260, 1175]
+  traffic_light_rois: []
+
+intersection_B:
+  name: "路口B"
+  date_pattern: "numbered"
+  stop_line: [1460, 687, 2192, 710]
+  junction_roi: [1172, 727, 1905, 2082]
+  # 斑马线四边形区域（从停止线延伸至路口内部，覆盖完整过街路径）
+  crosswalk_roi:
+    - [1460, 687]
+    - [2192, 710]
+    - [2192, 1150]
+    - [1460, 1127]
+  traffic_light_rois: []
+
+# ------------------------------------------------------------
+# 3. 节点特征编码配置 (参考STRR)
+# ------------------------------------------------------------
+node_features:
+  # 空间位置编码 (参考STRR 8维编码)
+  spatial_encoding_dim: 8            # [x1, y1, x2, y2, w, h, area, aspect_ratio]
+
+  # 外观特征 (ResNet提取)
+  appearance_dim: 256                # ResNet特征维度
+
+  # 运动特征
+  motion_dim: 6                      # [vx, vy, speed, angle, acc_x, acc_y]
+
+  # 各节点类型的总特征维度
+  pedestrian_feat_dim: 270           # 256(appearance) + 8(spatial) + 6(motion)
+  vehicle_feat_dim: 14               # 8(spatial) + 6(motion) — 车辆外观暂不编码
+  traffic_light_feat_dim: 4          # [color_r, color_g, color_y, remaining_time]
+  traffic_sign_feat_dim: 8           # [cx, cy, w, h, type_embed(4)]
+  lane_feat_dim: 4                   # [distance, direction_x, direction_y, type]
+
+# ------------------------------------------------------------
+# 4. 交通感知图配置
+# ------------------------------------------------------------
+graph:
+  # 图结构 (参考STRR + Social-STGCNN)
+  num_graph_layers: 2               # 图卷积层数
+  edge_weight_hidden_dim: 64        # 边权重计算隐藏层维度
+  gat_heads: 4                       # GAT多头注意力头数
+  gat_hidden_dim: 64                 # GAT隐藏层维度
+
+  # 空间范围限制
+  max_neighbor_distance: 30.0       # 最大邻接距离(米)，超过不建边
+  max_neighbors: 16                  # 最大邻居节点数
+
+# ------------------------------------------------------------
+# 5. 感知记忆模块配置
+# ------------------------------------------------------------
+memory:
+  behavioral_dim: 128                # 行为记忆维度
+  environmental_dim: 128             # 环境记忆维度
+  interactive_dim: 128               # 交互记忆维度
+  fusion_dim: 256                    # 融合后交通感知向量c的维度
+
+  # 注意力机制
+  attention_hidden_dim: 64           # 环境注意力隐藏层维度
+
+  # 记忆衰减 (参考MAGELLAN)
+  decay_rate: 0.01                   # 基础衰减率
+  decay_interval: 50                 # 衰减间隔(帧数)
+  confidence_threshold: 0.3          # 记忆置信度阈值
+
+# ------------------------------------------------------------
+# 6. 感知注入GRU配置 (参考STRR GRU)
+# ------------------------------------------------------------
+perception_gru:
+  hidden_dim: 256                    # GRU隐藏状态维度
+  input_dim: 512                     # 输入维度 (trajectory_feat + perception_c)
+
+  # 门控注入
+  reset_gate_source: "environmental"   # 重置门: environmental memory
+  update_gate_source: "interactive"    # 更新门: interactive memory
+  candidate_source: "behavioral"       # 候选状态: behavioral memory
+
+# ------------------------------------------------------------
+# 7. 感知状态变化检测配置
+# ------------------------------------------------------------
+change_detection:
+  # 结构性变化 (规则驱动)
+  structural_enabled: true
+  structural_categories:            # 需要检测的变化类型
+    - "node_appear"                  # 新节点出现
+    - "node_disappear"               # 节点消失
+    - "traffic_light_change"         # 交通灯状态切换
+    - "lane_change"                  # 车道变化
+
+  # 概念漂移 (数据驱动)
+  drift_enabled: true
+  drift_threshold: 0.15              # 门控激活变化阈值
+  drift_window: 30                   # 滑动窗口大小(帧数)
+
+# ------------------------------------------------------------
+# 8. 概率轨迹预测配置 (参考FlowChain ICCV 2023)
+# ------------------------------------------------------------
+flow_chain:
+  # 输入输出
+  obs_len: 8                         # 观测帧数 (历史)
+  pred_len: 12                       # 预测帧数 (未来)
+  trajectory_dim: 2                  # 轨迹坐标维度 (x, y)
+  num_samples: 20                    # 推理时采样轨迹数
+  num_eval_samples: 100              # 评估时采样轨迹数 (best-of-N)
+
+  # Transformer 架构 (官方参数)
+  d_model: 64                        # Transformer 隐藏维度
+  num_heads: 4                       # 注意力头数
+  num_encoder_layers: 3              # 编码器层数
+  num_decoder_layers: 3              # 解码器层数
+
+  # RealNVP 流参数
+  nvp_num_blocks: 4                  # 耦合层块数 (增大以增强表达能力)
+  nvp_hidden_dim: 128                # 流模型隐藏维度 (2 × d_model)
+  n_blocks: 4                        # 同上 (兼容旧配置)
+
+  # 条件注入
+  condition_dim: 256                 # 交通感知条件c的映射维度
+  condition_type: "film"             # FiLM conditioning (特征线性调制)
+
+  # 记忆更新触发
+  reset_on_change: true              # 感知变化时重置GRU状态
+  reinitialize_memory: true          # 感知变化时重新初始化记忆
+
+  # 训练损失
+  loss_type: "joint"                 # "nll" (纯NLL) 或 "joint" (NLL+MSE)
+  mse_weight: 1.0                    # MSE 权重 (联合损失)
+
+# ------------------------------------------------------------
+# 9. 闯红灯分类配置
+# ------------------------------------------------------------
+red_light:
+  # 闯红灯判定规则 (参考中国交通法规)
+  violation_criteria:
+    cross_stop_line_during_red: true  # 红灯时越过停止线
+    enter_crosswalk_during_red: true  # 红灯时进入斑马线
+    vehicle_near_crosswalk_suppresses: true  # 车辆靠近斑马线时抑制标注
+
+  # 车辆抑制阈值（像素）：车辆距离斑马线小于此值 → 抑制违规标注
+  vehicle_proximity_pixels: 60.0
+
+  # 蒙特卡洛采样
+  mc_samples: 100                    # 采样轨迹数
+  violation_threshold: 0.5           # 违规概率阈值
+
+  # 信号灯状态
+  red_light_duration: null           # 红灯持续时间(从数据中推断)
+
+# ------------------------------------------------------------
+# 10. 训练配置
+# ------------------------------------------------------------
+training:
+  batch_size: 32
+  learning_rate: 1e-3
+  weight_decay: 1e-4
+  epochs: 200
+  early_stop_patience: 30
+  gradient_clip: 1.0
+
+  # 学习率调度
+  lr_scheduler: "cosine"            # cosine / step / plateau
+  warmup_epochs: 5
+
+  # 损失权重
+  loss_weights:
+    trajectory: 1.0                   # 轨迹预测损失
+    perception: 0.5                   # 感知记忆损失
+    classification: 0.3               # 闯红灯分类损失
+
+# ------------------------------------------------------------
+# 11. 数据配置
+# ------------------------------------------------------------
+data:
+  raw_video_dir: "D:/Red-Light视频数据/" # 原始视频目录
+  video_dir: "D:/Red-Light视频数据/"     # 原始视频目录 (别名)
+  processed_dir: "data/processed/"        # 预处理后轨迹数据
+  trajectory_dir: "data/processed/trajectories/"  # 提取的轨迹数据
+  annotation_dir: "data/annotations/"     # 额外标注目录
+  checkpoint_dir: "checkpoints/"          # 模型检查点
+  log_dir: "logs/"                        # 训练日志
+
+  # 数据增强
+  augmentation:
+    horizontal_flip: true
+    random_crop: false
+    color_jitter: true

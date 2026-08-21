@@ -1,0 +1,17 @@
+{
+  "video": "D:/Red-Light\u89c6\u9891\u6570\u636e/2026_01_21/ch01_timing_20260121080748-20260121081042.mp4",
+  "frame_annotated": 0,
+  "stop_line": {
+    "x1": 1260,
+    "y1": 750,
+    "x2": 1927,
+    "y2": 775
+  },
+  "junction_roi": {
+    "x1": 962,
+    "y1": 792,
+    "x2": 1930,
+    "y2": 2077
+  },
+  "traffic_light_rois": []
+}

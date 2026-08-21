@@ -1,0 +1,29 @@
+# ========== 检测与追踪 ==========
+ultralytics>=8.0.0          # YOLOv8/YOLO11 目标检测
+boxmot>=10.0.0              # ByteTrack 等多目标追踪器
+opencv-python>=4.8.0        # 视频/图像处理
+numpy>=1.24.0
+pillow>=10.0.0
+
+# ========== 深度学习框架 ==========
+torch>=2.0.0
+torchvision>=0.15.0
+torch-geometric>=2.3.0      # 图神经网络 (GCN/GAT)
+
+# ========== 数据处理 ==========
+pandas>=2.0.0
+scipy>=1.10.0
+h5py>=3.9.0
+
+# ========== 可视化 ==========
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# ========== 实验管理 ==========
+pyyaml>=6.0
+tqdm>=4.65.0
+tensorboard>=2.13.0
+
+# ========== 概率建模 ==========
+pyro-ppl>=1.8.0             # 概率编程 (RealNVP / Flow)

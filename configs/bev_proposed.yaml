@@ -1,0 +1,117 @@
+# ============================================================
+# 单目固定相机 → BEV（Proposed / 完整模型）
+# Geometry-guided Weakly-supervised Monocular BEV
+#
+# L = λ_pseudo·L_pseudo + λ_cvp·L_cvp_cycle + λ_cycle·L_cycle
+#     + λ_corr·L_corr + λ_temporal·L_temporal
+#
+# 运行:  py scripts/train_bev.py --config configs/bev_proposed.yaml
+# ============================================================
+
+mode: "proposed"              # geometry | yang | proposed
+ablation: "a0"                # a0..a5（a0=完整，见 src/bev/losses/presets.py）
+
+# ------------------------------------------------------------
+# 相机标定 / 单应矩阵（几何教师，绝不是 BEV GT）
+# ------------------------------------------------------------
+# 默认 planar_scale 为占位符（沿用 video.pix_per_meter 的像素/米换算），
+# 真实标定请用 tools/estimate_homography.py 生成矩阵，并改为 mode: matrix。
+homography:
+  enabled: true
+  mode: "planar_scale"        # planar_scale | matrix
+  pix_per_meter: 47.5         # 与 default.yaml video.pix_per_meter 一致
+  origin_u: 1920.0            # 占位：图像中心
+  origin_v: 2160.0            # 占位：图像底部（地面原点）
+  # matrix_path: "data/calibration/homography.json"   # mode=matrix 时启用
+
+# BEV 网格（X=横向 lateral，Y=纵向 longitudinal，米）
+bev:
+  x_min: -20.0
+  x_max: 20.0
+  y_min: -40.0
+  y_max: 0.0
+  resolution: 0.25            # 米/格 → 宽160 高160
+
+# ------------------------------------------------------------
+# 模型结构（Yang 风格 CVP/CVT 骨干 + 解码器）
+# ------------------------------------------------------------
+model:
+  backbone: "resnet18"        # resnet18/34/50/101
+  pretrained: true
+  feature_dim: 256            # 相机/BEV 共享 token 维度
+  input_h: 480
+  input_w: 640
+  num_classes: 2              # pedestrian / vehicle
+
+  bev_feature_h: 40           # CVP/CVT 中间 BEV 特征空间
+  bev_feature_w: 40
+
+  cvp_hidden_dim: 256
+  cvt_num_heads: 4
+  cvt_num_layers: 1
+  cvt_ff_dim: 512
+  cvt_dropout: 0.1
+  decoder_hidden_dim: 128
+
+# ------------------------------------------------------------
+# 损失权重（由 mode/ablation 预设覆盖，见 presets.py）
+# ------------------------------------------------------------
+loss:
+  pseudo_mode: "focal"        # focal | bce | bce_dice | focal_dice
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  dice_weight: 1.0
+  cycle_dice_weight: 1.0
+  # 各 λ 权重：null 表示采用预设默认值
+  pseudo_weight: null
+  cvp_cycle_weight: null
+  cycle_weight: null
+  corr_weight: null
+  temporal_weight: null
+
+# ------------------------------------------------------------
+# 数据配置（复用已有检测+追踪输出，不重新检测）
+# ------------------------------------------------------------
+data:
+  raw_video_dir: "D:/Red-Light视频数据/"
+  bev:
+    video_dir: "D:/Red-Light视频数据/"
+    label_dir: "D:/Red-Light视频数据/labels/"
+    img_h: 2160                # 原始分辨率（单应矩阵标定基准）
+    img_w: 3840
+    input_h: 480               # 网络输入（不影响单应矩阵/伪标签）
+    input_w: 640
+    mask_h: 480                # 相机 mask 分辨率（cycle 损失）
+    mask_w: 640
+    sigma: 1.5                 # 伪 BEV 高斯 sigma（格）
+    normalize: true
+    temporal: true             # 采样连续帧（L_temporal）
+    split_ratio: [0.7, 0.15, 0.15]
+    split_seed: 42
+    # 或显式指定各划分的视频名：
+    # train_videos: [..]
+    # val_videos:   [..]
+    # test_videos:  [..]
+
+# ------------------------------------------------------------
+# 训练配置（OOM 用 AMP/梯度累积，不降分辨率）
+# ------------------------------------------------------------
+training:
+  batch_size: 8
+  learning_rate: 1e-4          # 预训练骨干 + 新头 → 较低学习率
+  weight_decay: 1e-4
+  epochs: 50
+  gradient_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_epochs: 2
+  seed: 42
+
+  use_amp: true                # 混合精度（节省显存）
+  grad_accum_steps: 2          # 梯度累积
+  grad_checkpointing: false    # 必要时开启（不改结构，仅省显存）
+  num_workers: 0               # 帧按需读取，0 最稳
+  log_interval: 20
+  eval_interval: 1             # 每个 epoch 后评估
+  checkpoint_dir: "checkpoints/bev/"
+  log_dir: "logs/bev/"
+  save_best: true

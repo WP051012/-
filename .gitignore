@@ -1,0 +1,48 @@
+# ============ 大文件 / 二进制（不纳入 git） ============
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npy
+*.npz
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ============ 文档 / 输出 ============
+*.docx
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+flowchain_10epoch_output.txt
+
+# ============ 云端 / 快照 / 临时 ============
+_cloud_results/
+analysis_snapshot/
+debug_frames/
+visualization/
+参考文献/
+.cloud/
+.DS_Store
+Thumbs.db
+~$*
+
+# ============ 提取/派生的数据（1.2GB 轨迹 CSV，不入库） ============
+data/processed/
+
+# ============ 本地运行产物 ============
+checkpoints/
+logs/
+output/

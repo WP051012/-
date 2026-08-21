@@ -1,0 +1,14 @@
+{
+  "论文整体梳理.docx": [
+    "输入第一人称画面，由参数V控制识别门槛：只有占画面比例≥V 的地标才会被捕获、录入记忆；",
+    "蒙特卡洛采样->构建违规区域：红灯+机动车道/斑马线->计算每条轨迹是否违规->平均概率加权："
+  ],
+  "实验方案设计.docx": [
+    "每个视频样本包含：",
+    "预测为闯红灯样本中的正确比例。",
+    "真实闯红灯样本被检测比例。",
+    "（3）统一测试样本",
+    "[\ntrajectory \\rightarrow violation\n]",
+    "[\ntraffic\\ cognition\n\\rightarrow\ntrajectory\\ distribution\n\\rightarrow\nviolation\n]"
+  ]
+}

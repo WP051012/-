@@ -1,0 +1,50 @@
+# ============================================================
+# 单目相机 → BEV（Geometry Baseline）
+# 无学习网络：直接用 Homography 投影（pseudo_bev 即输出）。
+# 仅用于评估/可视化，不训练。作为无监督几何上界参考。
+#
+# 运行:  py scripts/evaluate_bev.py --config configs/bev_geometry.yaml
+# ============================================================
+
+mode: "geometry"              # 无 BEV 网络，直接投影
+
+homography:
+  enabled: true
+  mode: "planar_scale"
+  pix_per_meter: 47.5
+  origin_u: 1920.0
+  origin_v: 2160.0
+
+bev:
+  x_min: -20.0
+  x_max: 20.0
+  y_min: -40.0
+  y_max: 0.0
+  resolution: 0.25
+
+# geometry 模式不需要模型/损失，但保留 model 供可视化脚本读取尺寸
+model:
+  input_h: 480
+  input_w: 640
+  num_classes: 2
+
+data:
+  raw_video_dir: "D:/Red-Light视频数据/"
+  bev:
+    video_dir: "D:/Red-Light视频数据/"
+    label_dir: "D:/Red-Light视频数据/labels/"
+    img_h: 2160
+    img_w: 3840
+    input_h: 480
+    input_w: 640
+    mask_h: 480
+    mask_w: 640
+    sigma: 1.5
+    normalize: true
+    temporal: false
+    split_ratio: [0.7, 0.15, 0.15]
+    split_seed: 42
+
+training:
+  checkpoint_dir: "checkpoints/bev/"
+  log_dir: "logs/bev/"

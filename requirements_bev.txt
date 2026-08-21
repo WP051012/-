@@ -1,0 +1,10 @@
+# ============================================================
+# BEV 链路（单目相机 → BEV）最小依赖
+# torch / torchvision 用 CUDA wheel 单独安装（见 scripts/hpc_setup.sh），
+# 不要写在这里，因为需要 --index-url 指向 PyTorch 官方 CUDA 源。
+# ============================================================
+
+numpy>=1.24
+opencv-python-headless>=4.8    # 服务器无 GUI，必须用 headless 版
+pyyaml>=6.0
+matplotlib>=3.7                # 仅 visualize_bev.py 可视化用到
