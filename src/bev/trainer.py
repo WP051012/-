@@ -79,8 +79,11 @@ def build_scheduler(optimizer, config: dict, steps_per_epoch: int, epochs: int):
 class BEVTrainer:
     def __init__(self, model: nn.Module, config: dict, device):
         self.model = model
-        self.config = config
         self.device = device
+        # Flatten the `training:` block to top level so the config.get(...) reads
+        # below (use_amp, gradient_clip, warmup_epochs, grad_accum_steps, ...)
+        # resolve to their configured values instead of falling back to defaults.
+        self.config = {**config, **(config.get("training", {}) or {})}
         self.temporal = bool(config.get("data", {}).get("bev", {}).get("temporal", False))
         self.loss_cfg = resolve_loss_cfg(config)
 
@@ -116,6 +119,7 @@ class BEVTrainer:
         model = self.model
         model.train()
         use_amp = _use_amp(self.config, self.device)
+        log_interval = max(1, int(self.config.get("log_interval", 20)))
 
         total_loss = 0.0
         n = 0
@@ -145,6 +149,12 @@ class BEVTrainer:
             total_loss += losses["total"].detach().item()
             n += 1
 
+            if (i + 1) % log_interval == 0 or is_last:
+                logger.info(
+                    f"[train] batch {i + 1}/{len(loader)} "
+                    f"loss={losses['total']:.4f} avg={total_loss / n:.4f}"
+                )
+
         return total_loss / max(1, n)
 
     # -- validation ---------------------------------------------------------
@@ -154,12 +164,13 @@ class BEVTrainer:
         model = self.model
         model.eval()
         use_amp = _use_amp(self.config, self.device)
+        log_interval = max(1, int(self.config.get("log_interval", 20)))
 
         agg = {}
         n = 0
         act_sum = {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
 
-        for batch in loader:
+        for i, batch in enumerate(loader):
             image = batch["image"].to(self.device)
             with _autocast(use_amp):
                 out = model(image)
@@ -173,6 +184,9 @@ class BEVTrainer:
             for k, v in stats.items():
                 act_sum[k] += v
             n += 1
+
+            if (i + 1) % log_interval == 0:
+                logger.info(f"[val] batch {i + 1}/{len(loader)}")
 
         if n == 0:
             return {"loss": float("nan")}, {}

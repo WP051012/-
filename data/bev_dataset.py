@@ -71,6 +71,7 @@ class FrameReader:
         cap = cv2.VideoCapture(str(path))
         if not cap.isOpened():
             raise IOError(f"cannot open video {path}")
+        logger.info(f"FrameReader: decoding {path.name} ...")
         frames = []
         while True:
             ret, frame = cap.read()
@@ -79,6 +80,8 @@ class FrameReader:
             if self.resize is not None:
                 frame = cv2.resize(frame, self.resize)
             frames.append(frame)
+            if len(frames) % 1000 == 0:
+                logger.info(f"FrameReader: {len(frames)} frames decoded from {video_name} ...")
         cap.release()
         if not frames:
             raise RuntimeError(f"no frames decoded from {path}")
