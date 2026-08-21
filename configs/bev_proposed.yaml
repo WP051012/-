@@ -14,23 +14,22 @@ ablation: "a0"                # a0..a5（a0=完整，见 src/bev/losses/presets.
 # ------------------------------------------------------------
 # 相机标定 / 单应矩阵（几何教师，绝不是 BEV GT）
 # ------------------------------------------------------------
-# 默认 planar_scale 为占位符（沿用 video.pix_per_meter 的像素/米换算），
-# 真实标定请用 tools/estimate_homography.py 生成矩阵，并改为 mode: matrix。
+# 由 tools/estimate_homography.py 用 4 个斑马线角标定（2026-08-21）。
+# 地面坐标：X=横穿马路(近侧0→远侧7m)，Y=沿马路(斑马线0~5m)。
+# 注意：这是「标准尺寸假设」——路宽 2×3.5m=7m，斑马线带深 5m，后续可实测修正。
 homography:
   enabled: true
-  mode: "planar_scale"        # planar_scale | matrix
-  pix_per_meter: 47.5         # 与 default.yaml video.pix_per_meter 一致
-  origin_u: 1920.0            # 占位：图像中心
-  origin_v: 2160.0            # 占位：图像底部（地面原点）
-  # matrix_path: "data/calibration/homography.json"   # mode=matrix 时启用
+  mode: "matrix"              # planar_scale | matrix
+  matrix_path: "data/calibration/homography.json"
 
 # BEV 网格（X=横向 lateral，Y=纵向 longitudinal，米）
+# 侧面俯拍：横向只覆盖路宽+余量，纵向覆盖两侧来车距离+斑马线。
 bev:
-  x_min: -20.0
-  x_max: 20.0
-  y_min: -40.0
-  y_max: 0.0
-  resolution: 0.25            # 米/格 → 宽160 高160
+  x_min: -2.0
+  x_max: 9.0
+  y_min: -15.0
+  y_max: 20.0
+  resolution: 0.25            # 米/格 → 宽44 高140
 
 # ------------------------------------------------------------
 # 模型结构（Yang 风格 CVP/CVT 骨干 + 解码器）
