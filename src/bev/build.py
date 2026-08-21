@@ -84,11 +84,16 @@ def build_model(config, homography, grid):
 
 
 def build_loaders(config, homography, grid, splits=("train", "val"), temporal=None):
-    """Return {split: DataLoader}. temporal defaults from config."""
+    """Return {split: DataLoader}. temporal defaults from config (train only)."""
     bev_cfg = config.get("data", {}).get("bev", {})
     if temporal is None:
         temporal = bool(bev_cfg.get("temporal", False))
-    datasets = build_bev_datasets(config, homography, grid, temporal=temporal,
+    # L_temporal is a train-only loss: val/test never consume image_prev /
+    # pseudo_bev_prev, so only the "train" split should build previous-frame
+    # targets. Pass a per-split spec instead of a single flag to avoid the
+    # val loader doing 2x wasted target work.
+    temporal_spec = {s: (bool(temporal) and s == "train") for s in splits}
+    datasets = build_bev_datasets(config, homography, grid, temporal=temporal_spec,
                                   splits=splits)
     tr_cfg = config.get("training", {})
     batch_size = int(tr_cfg.get("batch_size", 8))

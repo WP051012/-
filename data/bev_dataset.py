@@ -138,6 +138,10 @@ class BEVDataset(Dataset):
     sigma : Gaussian sigma for the pseudo-BEV heatmap (grid cells).
     temporal : sample consecutive frames (previous frame for L_temporal).
     normalize : apply ImageNet normalisation.
+    cache_targets : memoize pseudo_bev (homography+Gaussian) per (video, frame)
+        so it is computed once instead of once per epoch. The camera mask is
+        regenerated (cheap rectangle rasterisation) — its 2.46 MB/frame would
+        dominate RAM if cached. pseudo_bev cache is ~49 KB/frame (float32).
     """
 
     def __init__(
@@ -156,6 +160,7 @@ class BEVDataset(Dataset):
         sigma: float = 1.5,
         temporal: bool = False,
         normalize: bool = True,
+        cache_targets: bool = True,
     ):
         self.video_dir = Path(video_dir)
         self.label_dir = Path(label_dir)
@@ -169,10 +174,12 @@ class BEVDataset(Dataset):
         self.sigma = float(sigma)
         self.temporal = temporal
         self.normalize = normalize
+        self.cache_targets = cache_targets
 
         self.reader = FrameReader(video_dir, cache=True, resize=(self.input_w, self.input_h))
         self.label_reader = LabelReader(img_w, img_h)
         self._label_cache: Dict[str, Dict[int, list]] = {}
+        self._target_cache: Dict[Tuple[str, int], torch.Tensor] = {}
 
         self.samples: List[Tuple[str, int]] = self._enumerate_samples()
         logger.info(f"BEVDataset: {len(self.samples)} frames "
@@ -217,19 +224,40 @@ class BEVDataset(Dataset):
             img = (img - mean) / std
         return img
 
-    def _build_targets(self, detections: list):
-        pb = generate_pseudo_bev(detections, self.homography, self.grid, self.sigma)
+    def _build_camera_mask(self, detections: list) -> torch.Tensor:
         cam_mask = rasterize_camera_mask(
             detections, self.mask_h, self.mask_w, self.img_h, self.img_w
         )
-        return torch.from_numpy(pb.heatmap), torch.from_numpy(cam_mask)
+        return torch.from_numpy(cam_mask)
+
+    def _build_targets(self, detections: list):
+        pb = generate_pseudo_bev(detections, self.homography, self.grid, self.sigma)
+        return torch.from_numpy(pb.heatmap), self._build_camera_mask(detections)
+
+    def _get_targets(self, video_name: str, frame_id: int, detections: list):
+        """Memoize pseudo_bev; camera mask is regenerated each access.
+
+        pseudo_bev (homography projection + Gaussian rasterisation) is the
+        geometry-heavy part and is cached per (video, frame). The camera mask
+        is a cheap rectangle fill but 2.46 MB/frame — caching it would dominate
+        RAM, so it is recomputed.
+        """
+        key = (video_name, int(frame_id))
+        if self.cache_targets:
+            cached = self._target_cache.get(key)
+            if cached is not None:
+                return cached, self._build_camera_mask(detections)
+        pseudo_bev, camera_mask = self._build_targets(detections)
+        if self.cache_targets:
+            self._target_cache[key] = pseudo_bev
+        return pseudo_bev, camera_mask
 
     def __getitem__(self, idx: int) -> dict:
         video_name, frame_id = self.samples[idx]
         detections = self.get_detections(video_name, frame_id)
 
         image = self._load_frame_rgb(video_name, frame_id)
-        pseudo_bev, camera_mask = self._build_targets(detections)
+        pseudo_bev, camera_mask = self._get_targets(video_name, frame_id, detections)
 
         sample = {
             "image": image,
@@ -242,7 +270,7 @@ class BEVDataset(Dataset):
         if self.temporal:
             det_prev = self.get_detections(video_name, frame_id - 1)
             image_prev = self._load_frame_rgb(video_name, frame_id - 1)
-            pseudo_prev, _ = self._build_targets(det_prev)
+            pseudo_prev, _ = self._get_targets(video_name, frame_id - 1, det_prev)
             sample["image_prev"] = image_prev
             sample["pseudo_bev_prev"] = pseudo_prev
 
@@ -293,12 +321,16 @@ def split_videos(video_names: Sequence[str], split_ratio, seed: int = 42) -> Dic
     }
 
 
-def build_bev_datasets(config: dict, homography, grid, temporal: bool = False,
+def build_bev_datasets(config: dict, homography, grid, temporal=False,
                        splits=("train", "val", "test")):
     """Build train/val/test BEVDatasets from a config dict.
 
     Reads ``config['data']['bev']`` for video/label dirs, split ratio or explicit
     per-split video lists, and input/image/mask sizes.
+
+    ``temporal`` may be a bool (applied to every split) or a dict ``{split: bool}``
+    (per-split; unlisted splits default to False). This lets callers enable
+    previous-frame sampling only for the train split.
     """
     bev_cfg = config.get("data", {}).get("bev", {})
     video_dir = bev_cfg.get("video_dir", config.get("data", {}).get("raw_video_dir", "."))
@@ -312,6 +344,7 @@ def build_bev_datasets(config: dict, homography, grid, temporal: bool = False,
     mask_w = bev_cfg.get("mask_w")
     sigma = float(bev_cfg.get("sigma", 1.5))
     normalize = bool(bev_cfg.get("normalize", True))
+    cache_targets = bool(bev_cfg.get("cache_targets", True))
 
     # Resolve the per-split video lists.
     all_names = list_label_videos(label_dir)
@@ -324,6 +357,7 @@ def build_bev_datasets(config: dict, homography, grid, temporal: bool = False,
 
     datasets = {}
     for s in splits:
+        ts = temporal if isinstance(temporal, bool) else bool((temporal or {}).get(s, False))
         datasets[s] = BEVDataset(
             video_dir=video_dir,
             label_dir=label_dir,
@@ -333,6 +367,7 @@ def build_bev_datasets(config: dict, homography, grid, temporal: bool = False,
             input_h=input_h, input_w=input_w,
             img_h=img_h, img_w=img_w,
             mask_h=mask_h, mask_w=mask_w,
-            sigma=sigma, temporal=temporal, normalize=normalize,
+            sigma=sigma, temporal=ts, normalize=normalize,
+            cache_targets=cache_targets,
         )
     return datasets
